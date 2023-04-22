@@ -55,6 +55,8 @@ def process_traj(dname):
     labels = pad_sequence(labels, batch_first=True, padding_value=0)  # (NUM, M)
 
     data = [trajs, np.array(mat1), mat2s, np.array(mat2t), labels, np.array(lens), u_max, l_max]
+    del zipped, trajs, mat1, mat2s, mat2t, labels, lens, u_max, l_max # CHANGED
+
     data_pkl = './data/' + dname + '_data.pkl'
     print("Reached pkl file creation")
     open(data_pkl, 'a')
@@ -118,5 +120,5 @@ def rt_mat2t(traj_time):  # traj_time (*M+1) triangle matrix
     return mat  # (*M, *M)
 
 if __name__ == '__main__':
-    name = 'Gowalla_small'
+    name = 'NYC'
     process_traj(name)
