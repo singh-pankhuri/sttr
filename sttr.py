@@ -2,7 +2,6 @@ from sttr.preprocess import *
 from sttr.train import *
 from sttr.load import *
 import time
-import random
 from torch import optim
 import torch.utils.data as data
 from tqdm import tqdm
@@ -15,7 +14,7 @@ dname = 'Foursquare'
 # preprocess(dname)
 
 # Generate the initial embeddings as pickle file from above npy files
-process_traj(dname)
+create_pickle(dname)
 
 # Train the model with the hyper-parameters
 part = 100
