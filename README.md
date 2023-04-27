@@ -1,5 +1,6 @@
 # WhereTo: A Travel Recommendation System
 Course project for CSE 6240: Web Search and Text Mining, Spring 2023
+
 Team 10 - Divya Umapathy, Harshvardhan Baldwa, Mansi Bhandari, Pankhuri Singh
 
 ## Description
