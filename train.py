@@ -6,52 +6,7 @@ import torch.utils.data as data
 from tqdm import tqdm
 from models import *
 import numpy as np
-
-def calculate_acc(prob, label, f2): 
-    recall = [0.0, 0.0, 0.0, 0.0]
-    ndcg = [0.0, 0.0, 0.0, 0.0]
-    for i, k in enumerate([1, 5, 10, 20]):
-        _, topk_predict_batch = torch.topk(prob, k=k)
-        for j, topk_predict in enumerate(to_npy(topk_predict_batch)):
-          target = to_npy(label)[j]
-          if target in topk_predict:
-            recall[i] = 1.0
-            rank_list = list(topk_predict)
-            rank_index = rank_list.index(target)
-            dcg = 5.0 / np.log2(rank_index + 2)
-            idcg = 5.0 / np.log2(2)
-            ndcg[i] = dcg / idcg
-          # if k == 20:
-          #   f2.write('next loc:{}'.format(label[0]))
-          #   f2.write('rec loc:{}'.format(topk_predict_batch))
-          #   f2.write('\n')
-
-    return np.array(recall), np.array(ndcg) 
-
-def sampling_prob(prob, label, num_neg):
-    num_label, l_m = prob.shape[0], prob.shape[1]-1  # prob (N, L)
-    label = label.view(-1)  # label (N)
-    init_label = np.linspace(0, num_label-1, num_label)  # (N), [0 -- num_label-1]
-    init_prob = torch.zeros(size=(num_label, num_neg+len(label)))  # (N, num_neg+num_label)
-
-    random_ig = random.sample(range(1, l_m+1), num_neg)  # (num_neg) from (1 -- l_max)
-    while len([lab for lab in label if lab in random_ig]) != 0:  # no intersection
-        random_ig = random.sample(range(1, l_m+1), num_neg)
-
-    global global_seed
-    random.seed(global_seed)
-    global_seed += 1
-
-    # place the pos labels ahead and neg samples in the end
-    for k in range(num_label):
-        for i in range(num_neg + len(label)):
-            if i < len(label):
-                init_prob[k, i] = prob[k, label[i]]
-            else:
-                init_prob[k, i] = prob[k, random_ig[i-len(label)]]
-
-    return torch.FloatTensor(init_prob), torch.LongTensor(init_label)  # (N, num_neg+num_label), (N)
-
+import os
 
 class DataSet(data.Dataset):
     def __init__(self, traj, m1, v, label, length):
@@ -74,17 +29,16 @@ class Trainer:
         # load other parameters
         self.model = model.to(device)
         self.records = record
-        self.start_epoch = record['epoch'][-1] if load else 1
+        self.start_epoch = 1
         self.num_neg = num_neg #10
         self.interval = 1000
         self.batch_size = 1 # N = 1
         self.learning_rate = lr  #3e-3
         self.num_epoch = epochs #100
-        self.threshold = np.mean(record['acc_valid'][-1]) if load else 0  # 0 if not update
+        self.threshold = 0  # 0 if not update
 
         # (NUM, M, 3), (NUM, M, M, 2), (L, L), (NUM, M, M), (NUM, M), (NUM) i.e. [*M]
-        self.traj, self.mat1, self.mat2s, self.mat2t, self.label, self.len = \
-            trajs, mat1, mat2s, mat2t, labels, lens
+        self.traj, self.mat1, self.mat2s, self.mat2t, self.label, self.len = trajs, mat1, mat2s, mat2t, labels, lens
         # nn.cross_entropy_loss counts target from 0 to C - 1, so we minus 1 here.
         self.dataset = DataSet(self.traj, self.mat1, self.mat2t, self.label-1, self.len)
         self.data_loader = data.DataLoader(dataset=self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -94,10 +48,11 @@ class Trainer:
         optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=0)
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=1)
 
-        f = open((dname + "_" + str(part) + "_" + str(self.num_neg) + "_" + str(emb_dim) + "_result.txt"),"w",encoding='utf-8')
-        # f2 = open((dname + "_" + str(part) + "_" + str(self.num_neg) + "_" + str(emb_dim) +"_rec_point.txt"), "w", encoding='utf-8')
-        f2 = open((dname +"_rec_point.txt"), "w", encoding='utf-8')
+        if not os.path.exists("results/"):
+            os.makedirs("results/")
 
+        f = open(("results/" +dname + "_sttr.txt"),"w",encoding='utf-8')
+        f2 = open((dname +"_rec_point.txt"), "w", encoding='utf-8')
 
         for t in range(self.num_epoch):
             # settings or validation and test
@@ -119,13 +74,11 @@ class Trainer:
                     train_m1 = person_m1 * m1_mask
                     train_m2t = person_m2t[:, mask_len - 1]
                     train_label = person_label[:, mask_len - 1]  # (N)
-                    # print("shape", train_label.shape)
                     train_len = torch.zeros(size=(self.batch_size,), dtype=torch.long).to(device) + mask_len
 
                     prob = self.model(train_input, train_m1, self.mat2s, train_m2t, train_len)  # (N, L)!!!
 
                     if mask_len <= person_traj_len[0] - 2:  # only training
-                        # nn.utils.clip_grad_norm_(self.model.parameters(), 10)
                         prob_sample, label_sample = sampling_prob(prob, train_label, self.num_neg)
                         loss_train = F.cross_entropy(prob_sample, label_sample)
                         loss_train.backward()
@@ -135,13 +88,13 @@ class Trainer:
 
                     elif mask_len == person_traj_len[0] - 1:  # only validation
                         valid_size += person_input.shape[0]
-                        recall_valid += calculate_acc(prob, train_label, f2)[0]
-                        ndcg_valid += calculate_acc(prob, train_label, f2)[1]
+                        recall_valid += evaluate_mets(prob, train_label, f2)[0]
+                        ndcg_valid += evaluate_mets(prob, train_label, f2)[1]
 
                     elif mask_len == person_traj_len[0]:  # only test
                         test_size += person_input.shape[0]
-                        recall_test += calculate_acc(prob, train_label, f2)[0]
-                        ndcg_test += calculate_acc(prob, train_label, f2)[1]
+                        recall_test += evaluate_mets(prob, train_label, f2)[0]
+                        ndcg_test += evaluate_mets(prob, train_label, f2)[1]
 
                 bar.update(self.batch_size)
             bar.close()
@@ -149,21 +102,15 @@ class Trainer:
             np.set_printoptions(precision=6)
             recall_valid = np.array(recall_valid) / valid_size
             ndcg_valid = np.array(ndcg_valid) / valid_size
-            print('epoch:{}, time:{}, valid_recall:{}'.format(self.start_epoch + t, time.time() - start, recall_valid))
-            # with open("result.txt","w") as f:
             f.write('epoch:{}, time:{}, valid_recall:{}'.format(self.start_epoch + t, time.time() - start, recall_valid))
             f.write('\n')
-            print('epoch:{}, time:{}, valid_ndcg:{}'.format(self.start_epoch + t, time.time() - start, ndcg_valid))
             f.write('epoch:{}, time:{}, valid_ndcg:{}'.format(self.start_epoch + t, time.time() - start, ndcg_valid))
             f.write('\n')
 
             recall_test = np.array(recall_test) / test_size
             ndcg_test = np.array(ndcg_test) / test_size
-            print('epoch:{}, time:{}, test_recall:{}'.format(self.start_epoch + t, time.time() - start, recall_test))
-            # with open("result.txt", "w") as f:
             f.write('epoch:{}, time:{}, test_recall:{}'.format(self.start_epoch + t, time.time() - start, recall_test))
             f.write('\n')
-            print('epoch:{}, time:{}, test_ndcg:{}'.format(self.start_epoch + t, time.time() - start, ndcg_test))
             f.write('epoch:{}, time:{}, test_ndcg:{}'.format(self.start_epoch + t, time.time() - start, ndcg_test))
             f.write('\n')
 
@@ -173,10 +120,43 @@ class Trainer:
             self.records['ndcg_test'].append(ndcg_test)
             self.records['epoch'].append(self.start_epoch + t)
 
-            # if self.threshold < np.mean(recall_valid):
-            #     self.threshold = np.mean(recall_valid)
-            #     torch.save({'state_dict': self.model.state_dict(),
-            #                 'records': self.records,
-            #                 'time': time.time() - start},
-            #                'best_stan_win_1000_' + dname + '.pth')
         f.close()
+
+def evaluate_mets(prob, label, f2): 
+    recall = [0.0, 0.0, 0.0, 0.0]
+    ndcg = [0.0, 0.0, 0.0, 0.0]
+    for i, k in enumerate([1, 5, 10, 20]):
+        _, topk_predict_batch = torch.topk(prob, k=k)
+        for j, topk_predict in enumerate(convert_npy(topk_predict_batch)):
+          target = convert_npy(label)[j]
+          if target in topk_predict:
+            recall[i] = 1.0
+            rank_list = list(topk_predict)
+            rank_index = rank_list.index(target)
+            dcg = 5.0 / np.log2(rank_index + 2)
+            idcg = 5.0 / np.log2(2)
+            ndcg[i] = dcg / idcg
+    return np.array(recall), np.array(ndcg) 
+
+def sampling_prob(prob, label, num_neg):
+    num_label, l_m = prob.shape[0], prob.shape[1]-1  # prob (N, L)
+    label = label.view(-1)  # label (N)
+    init_label = np.linspace(0, num_label-1, num_label)  # (N), [0 -- num_label-1]
+    init_prob = torch.zeros(size=(num_label, num_neg+len(label)))  # (N, num_neg+num_label)
+
+    random_ig = random.sample(range(1, l_m+1), num_neg)  # (num_neg) from (1 -- l_max)
+    while len([lab for lab in label if lab in random_ig]) != 0:  # no intersection
+        random_ig = random.sample(range(1, l_m+1), num_neg)
+
+    global global_seed
+    random.seed(global_seed)
+    global_seed += 1
+
+    for k in range(num_label):
+        for i in range(num_neg + len(label)):
+            if i < len(label):
+                init_prob[k, i] = prob[k, label[i]]
+            else:
+                init_prob[k, i] = prob[k, random_ig[i-len(label)]]
+
+    return torch.FloatTensor(init_prob), torch.LongTensor(init_label)  # (N, num_neg+num_label), (N)

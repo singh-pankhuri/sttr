@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import datetime as dt
+import os
 
 min_lat = 34.048900
 min_long = -120.554200
@@ -10,36 +11,40 @@ max_long = -105.782100
 small = True
 
 def preprocess(dataset):
-    if dataset.lower() == 'foursquare':
-        df = pd.read_csv('data/Foursquare/dataset_WWW2019/dataset_WWW_Checkins_anonymized.txt', sep='\t', header=None)
-        df.columns = ['user','locid','utc','time']
+    try:
+        if dataset.lower() == 'foursquare':
+            df = pd.read_csv('data/foursquare/checkins.txt', sep='\t', header=None)
+            df.columns = ['user','locid','utc','time']
+            
+            df_poi = pd.read_csv('data/foursquare/raw_POIs.txt', sep='\t', header=None)
+            df_poi.columns = ['locid','lat','long','cat','country']
+            df_poi = df_poi[['locid','lat','long']]
+            df_poi = df_poi[((df_poi.lat >= min_lat) & (df_poi.lat <= max_lat))]
+            df_poi = df_poi[((df_poi.long >= min_long) & (df_poi.long <= max_long))]
+            reg_list = list(set(df_poi.locid))
+            del df_poi
+
+            # Get date in datetime format
+            df['utc_clipped'] = df.utc.str.replace(" +0000","", regex = False).str.slice(4) #50s
+            df = df[~df.utc_clipped.isin(['1239673244639234'])]
+            df['utc_dt'] = pd.to_datetime(df.utc_clipped, format = '%b %d %H:%M:%S %Y') 
+
+            df = df[(df.locid.isin(reg_list))]
+            
+        elif dataset.lower() == 'gowalla':
+            df = pd.read_csv('data/gowalla/checkins.txt', sep='\t', header=None)
+            df.columns = ['user','utc','lat','longi','locid']
+
+            # Get date in datetime format and also get the minimum date
+            df['utc_dt'] = pd.to_datetime(df.utc, format = '%Y-%m-%dT%H:%M:%SZ')
+            df = df[((df.lat >= min_lat) & (df.lat <= max_lat))]
+            df = df[((df.longi >= min_long) & (df.longi <= max_long))]
         
-        df_poi = pd.read_csv('data/Foursquare/dataset_WWW2019/raw_POIs.txt', sep='\t', header=None)
-        df_poi.columns = ['locid','lat','long','cat','country']
-        df_poi = df_poi[['locid','lat','long']]
-        df_poi = df_poi[((df_poi.lat >= min_lat) & (df_poi.lat <= max_lat))]
-        df_poi = df_poi[((df_poi.long >= min_long) & (df_poi.long <= max_long))]
-        reg_list = list(set(df_poi.locid))
-        del df_poi
-
-        # Get date in datetime format
-        df['utc_clipped'] = df.utc.str.replace(" +0000","", regex = False).str.slice(4) #50s
-        df = df[~df.utc_clipped.isin(['1239673244639234'])]
-        df['utc_dt'] = pd.to_datetime(df.utc_clipped, format = '%b %d %H:%M:%S %Y') 
-
-        df = df[(df.locid.isin(reg_list))]
+        else:
+            raise ValueError("Invalid dataset")
         
-    elif dataset.lower() == 'gowalla':
-        df = pd.read_csv('data/Gowalla/loc-gowalla_totalCheckins.txt', sep='\t', header=None)
-        df.columns = ['user','utc','lat','longi','locid']
-
-        # Get date in datetime format and also get the minimum date
-        df['utc_dt'] = pd.to_datetime(df.utc, format = '%Y-%m-%dT%H:%M:%SZ')
-        df = df[((df.lat >= min_lat) & (df.lat <= max_lat))]
-        df = df[((df.longi >= min_long) & (df.longi <= max_long))]
-    
-    else:
-        raise FileNotFoundError(f"Only Foursquare or Gowalla are accepted inputs")
+    except FileNotFoundError:
+        raise FileNotFoundError("No data found.")
     
     min_date = df.utc_dt.min() - dt.timedelta(minutes = 1)
     # Filter users with more than 5 check-ins
@@ -80,14 +85,17 @@ def preprocess(dataset):
     df_selected = df_selected.merge(users, on=['user'], how = 'inner')
     df_final = df_selected[['new_userid','locid_num','time_in_min']]
 
+    if not os.path.exists("data/sttr_files/"):
+        os.makedirs("data/sttr_files/")
+
     # Convert to numpy and save as .npy file
     np_final = df_final.to_numpy()
-    np.save('./data/'+dataset+'.npy', np_final)
+    np.save('./data/sttr_files/'+dataset+'.npy', np_final)
 
     #POI Generation:
     if dataset.lower() == 'foursquare':
         # Load the data, remove the additional columns
-        df_poi = pd.read_csv('data/Foursquare/dataset_WWW2019/raw_POIs.txt', sep='\t', header=None)
+        df_poi = pd.read_csv('data/foursquare/raw_POIs.txt', sep='\t', header=None)
         df_poi.columns = ['locid','lat','long','cat','country']
         df_poi = df_poi[['locid','lat','long']]
         df_poi_selected = df_poi.merge(checkins,  on=['locid'], how = 'inner')
@@ -98,8 +106,4 @@ def preprocess(dataset):
     df_poi_selected = df_poi_selected.sort_values('locid_num').reset_index(drop = True)[['locid_num','lat','long']]
     # Convert to numpy and save as .npy file
     np_poi_final = df_poi_selected.to_numpy()
-    np.save('./data/'+dataset+'_small_POI.npy', np_poi_final)
-
-if __name__ == '__main__':
-    name = "Foursquare"
-    preprocess(name)
+    np.save('./data/sttr_files/'+dataset+'_small_POI.npy', np_poi_final)
