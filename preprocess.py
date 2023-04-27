@@ -11,10 +11,10 @@ small = True
 
 def preprocess(dataset):
     if dataset.lower() == 'foursquare':
-        df = pd.read_csv('Foursquare/dataset_WWW2019/dataset_WWW_Checkins_anonymized.txt', sep='\t', header=None)
+        df = pd.read_csv('data/Foursquare/dataset_WWW2019/dataset_WWW_Checkins_anonymized.txt', sep='\t', header=None)
         df.columns = ['user','locid','utc','time']
         
-        df_poi = pd.read_csv('Foursquare/dataset_WWW2019/raw_POIs.txt', sep='\t', header=None)
+        df_poi = pd.read_csv('data/Foursquare/dataset_WWW2019/raw_POIs.txt', sep='\t', header=None)
         df_poi.columns = ['locid','lat','long','cat','country']
         df_poi = df_poi[['locid','lat','long']]
         df_poi = df_poi[((df_poi.lat >= min_lat) & (df_poi.lat <= max_lat))]
@@ -30,7 +30,7 @@ def preprocess(dataset):
         df = df[(df.locid.isin(reg_list))]
         
     elif dataset.lower() == 'gowalla':
-        df = pd.read_csv('Gowalla/loc-gowalla_totalCheckins.txt', sep='\t', header=None)
+        df = pd.read_csv('data/Gowalla/loc-gowalla_totalCheckins.txt', sep='\t', header=None)
         df.columns = ['user','utc','lat','longi','locid']
 
         # Get date in datetime format and also get the minimum date
@@ -87,7 +87,7 @@ def preprocess(dataset):
     #POI Generation:
     if dataset.lower() == 'foursquare':
         # Load the data, remove the additional columns
-        df_poi = pd.read_csv('Foursquare/dataset_WWW2019/raw_POIs.txt', sep='\t', header=None)
+        df_poi = pd.read_csv('data/Foursquare/dataset_WWW2019/raw_POIs.txt', sep='\t', header=None)
         df_poi.columns = ['locid','lat','long','cat','country']
         df_poi = df_poi[['locid','lat','long']]
         df_poi_selected = df_poi.merge(checkins,  on=['locid'], how = 'inner')
