@@ -1,7 +1,7 @@
+import haversine as hs
+import joblib
 import numpy as np
 import torch
-import haversine as hs 
-import joblib
 from torch.nn.utils.rnn import pad_sequence
 
 max_len = 100 
@@ -9,6 +9,7 @@ max_len = 100
 def create_pickle(dataname):
     data = np.load('./data/sttr_files/' + dataname + '.npy')
     poi = np.load('./data/sttr_files/' + dataname + '_POI.npy')
+    print("Data loaded")
     num_user = len(set(data[:, 0])) 
     data_user = data[:, 0] 
     trajs, labels, mat1, mat2t, lens = [], [], [], [], []

@@ -1,4 +1,5 @@
-from layers import *
+from .layers import *
+
 
 class Model(nn.Module):
     def __init__(self, t_dim, l_dim, u_dim, embed_dim, ex, dropout=0.1):

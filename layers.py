@@ -1,14 +1,19 @@
-from load import *
+import math
+
 import torch
 from torch import nn
 from torch.nn import functional as F
-import math
+
+from .load import *
 
 seed = 0
 global_seed = 0
 hours = 24*7
 torch.manual_seed(seed)
-device = 'cuda'
+if torch.cuda.is_available():
+    device = 'cuda'
+else:
+    device = 'cpu'
 
 class TransformerBlock(nn.Module):
     def __init__(self, hidden, attn_heads, feed_forward_hidden, dropout):

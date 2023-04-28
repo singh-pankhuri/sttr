@@ -1,7 +1,8 @@
-import pandas as pd
-import numpy as np
 import datetime as dt
 import os
+
+import numpy as np
+import pandas as pd
 
 min_lat = 34.048900
 min_long = -120.554200
@@ -96,9 +97,9 @@ def preprocess(dataset):
     if dataset.lower() == 'foursquare':
         # Load the data, remove the additional columns
         df_poi = pd.read_csv('data/foursquare/raw_POIs.txt', sep='\t', header=None)
-        df_poi.columns = ['locid','lat','long','cat','country']
-        df_poi = df_poi[['locid','lat','long']]
-        df_poi_selected = df_poi.merge(checkins,  on=['locid'], how = 'inner')
+        df_poi.columns = ['key','lat','long','cat','country']
+        df_poi = df_poi[['key','lat','long']]
+        df_poi_selected = df_poi.merge(checkins,  on=['key'], how = 'inner')
 
     elif dataset.lower() == 'gowalla':
         df_poi_selected = df_selected[['locid_num','lat','longi']].drop_duplicates()

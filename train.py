@@ -1,12 +1,15 @@
-from load import *
-import time
-import random
-from torch import optim
-import torch.utils.data as data
-from tqdm import tqdm
-from models import *
-import numpy as np
 import os
+import random
+import time
+
+import numpy as np
+import torch.utils.data as data
+from torch import optim
+from tqdm import tqdm
+
+from .load import *
+from .models import *
+
 
 class DataSet(data.Dataset):
     def __init__(self, traj, m1, v, label, length):
